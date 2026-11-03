@@ -55,13 +55,6 @@ http://localhost:8765 を開きます。Tesseract は初回だけ言語データ
 
 本番では、サービスアカウントや Workload Identity を使うサーバー側の実装に置き換えてください。
 
-## 分かったこと（2026-11-03）
+## 比較結果
 
-| 画像 | 条件 | 一致率 |
-|---|---|---|
-| SNS 投稿（料理写真に白文字） | Tesseract、PSM 3 | 1% |
-| 同上 | Tesseract、白い文字＋PSM 11 | 88% |
-| 同上 | 上記＋範囲指定 | 89〜92% |
-| SNS 投稿（縁取り付きの大きな縦書き装飾文字） | Tesseract、どの設定でも | 5% 前後 |
-
-Tesseract は書類向けのエンジンなので、写真の中の装飾文字（縁取り・影付き、縦書きと横書きの混在、太い見出しフォント）は苦手です。
+Tesseract.js と Cloud Vision の比較結果と、差が出る理由は [docs/comparison.md](docs/comparison.md) にまとめています。
