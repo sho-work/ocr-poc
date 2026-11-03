@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OCR 写真テスト</title>
+<meta name="description" content="tesseract.js と Google Cloud Vision で、どんな写真の文字を読めるかを比べる PoC">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kurenaido&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js" integrity="sha384-2BQ3U3OdKOb0Uczxqr41I9UvZkzr4V9Hv8uSzMMZAlmhsFClvdZX5wi5fDCzG+tM" crossorigin="anonymous"></script>
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#f6f5f2; --panel:#ffffff; --ink:#1c1b19; --sub:#6b6862; --line:#e2dfd8;
+  --accent:#2f5d8a; --accent-ink:#ffffff; --soft:#eef2f6; --warn-bg:#fff6e5;
+  --good:#2e7d4f; --mid:#b7791f; --bad:#c0392b;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151515; --panel:#1f1f1e; --ink:#ecebe7; --sub:#a29f98; --line:#33322f;
+    --accent:#7fb0e0; --accent-ink:#0d1a26; --soft:#22303c; --warn-bg:#352a17;
+    --good:#5cc489; --mid:#e0a84a; --bad:#ef7365;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151515; --panel:#1f1f1e; --ink:#ecebe7; --sub:#a29f98; --line:#33322f;
+  --accent:#7fb0e0; --accent-ink:#0d1a26; --soft:#22303c; --warn-bg:#352a17;
+  --good:#5cc489; --mid:#e0a84a; --bad:#ef7365;
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.7 var(--sans)}
+h1,h2,h3{margin:0;line-height:1.3}
+button,select,input,textarea{font:inherit;color:inherit}
+.wrap{max-width:1320px;margin:0 auto;padding:20px 16px 64px}
+header.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;margin-bottom:16px}
+header.top h1{font-size:20px}
+header.top p{margin:0;color:var(--sub)}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}
+.layout>*{min-width:0}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+aside.panel{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}
+@media (max-width:900px){aside.panel{position:static;max-height:none}}
+aside h2{font-size:13px;color:var(--sub);font-weight:600;letter-spacing:.04em;margin:14px 0 6px}
+aside h2:first-child{margin-top:0}
+.field{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}
+.field label{font-size:12px;color:var(--sub)}
+select,input[type=text],input[type=password],textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+textarea{resize:vertical;min-height:64px;font-family:var(--mono);font-size:12.5px}
+.check{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px}
+.hint{font-size:11.5px;color:var(--sub);margin:2px 0 0}
+.warn{font-size:11.5px;background:var(--warn-bg);border-radius:6px;padding:6px 8px;margin:4px 0 10px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.small{padding:3px 9px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:default}
+.btn[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+aside .btns .btn{flex:1}
+
+.drop{border:2px dashed var(--line);border-radius:10px;padding:22px 16px;text-align:center;background:var(--panel);transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:var(--soft)}
+.drop p{margin:0 0 12px;color:var(--sub)}
+.drop .btns{justify-content:center}
+.steps{margin:12px 0 0;padding-left:20px;color:var(--sub);font-size:12.5px;text-align:left;display:inline-block}
+
+#status{margin:12px 0;font-size:12.5px;color:var(--sub);min-height:1.7em}
+
+section.log{margin:20px 0}
+section.log header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+section.log h2{font-size:15px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--sub);font-weight:600;background:var(--bg);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.cond{color:var(--sub);font-size:11.5px;min-width:200px}
+td.engine{white-space:nowrap}
+.empty{padding:18px;color:var(--sub);text-align:center}
+
+.score{font-weight:600;font-variant-numeric:tabular-nums}
+.score.good{color:var(--good)}.score.mid{color:var(--mid)}.score.bad{color:var(--bad)}
+
+.cards{display:grid;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card>header{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.card>header h3{font-size:14px;margin-right:auto;word-break:break-all}
+.chips{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:8px 14px 0}
+.chip{font-size:11px;background:var(--soft);border-radius:999px;padding:1px 8px;color:var(--ink)}
+.engines{display:flex;gap:4px;margin-right:6px}
+.card .note{margin:8px 14px 0;font-size:12px;color:var(--sub)}
+.card-body{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;padding:12px 14px 14px}
+@media (max-width:760px){.card-body{grid-template-columns:1fr}}
+.view canvas{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff;touch-action:auto}
+.view.selecting canvas{cursor:crosshair;touch-action:none;outline:2px solid var(--accent);outline-offset:2px}
+.viewbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px;font-size:12px;color:var(--sub)}
+.viewbar label{display:flex;align-items:center;gap:4px}
+.legend{display:flex;gap:10px;margin-left:auto}
+.legend span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:currentColor}
+.selhint{font-size:12px;color:var(--accent);margin:6px 0 0}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px;margin-bottom:10px}
+.metric{background:var(--bg);border-radius:6px;padding:6px 8px}
+.metric b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
+.metric small{font-size:11px;color:var(--sub)}
+pre.text{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;font:13px/1.6 var(--mono);white-space:pre-wrap;word-break:break-all;max-height:280px;overflow:auto}
+.outbar{display:flex;justify-content:space-between;align-items:center;margin:0 0 4px;font-size:12px;color:var(--sub)}
+details{margin-top:10px}
+details summary{cursor:pointer;font-size:12.5px;color:var(--sub)}
+details textarea{margin-top:6px}
+.progress{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub);margin-bottom:10px}
+.progress progress{flex:1;height:8px;accent-color:var(--accent)}
+.err{color:var(--bad);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>OCR 写真テスト</h1>
+    <p>Tesseract.js はブラウザ内で処理します。Cloud Vision を選んだときだけ、server.py 経由で画像を Google に送信します。</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel" aria-label="認識設定">
+      <h2>エンジン</h2>
+      <div class="field">
+        <label for="engine">OCR エンジン</label>
+        <select id="engine">
+          <option value="tesseract" selected>Tesseract.js（ブラウザ内）</option>
+          <option value="vision">Google Cloud Vision</option>
+          <option value="both">両方で比較</option>
+        </select>
+      </div>
+      <div id="visionBox" hidden>
+        <p class="warn">Cloud Vision では画像を Google に送信します。従量課金（月 1,000 件までは無料枠）なので、送る画像の枚数に注意してください。</p>
+        <p class="hint" id="visionStatus">サーバーの設定を確認中…</p>
+        <p class="hint">API キーは server.py が環境変数から読み、ブラウザには渡しません。Vision には回転と範囲指定だけが適用されます。</p>
+      </div>
+
+      <h2>Tesseract の設定</h2>
+      <div class="field">
+        <label for="lang">言語</label>
+        <select id="lang">
+          <option value="jpn+eng" selected>日本語＋英語（jpn+eng）</option>
+          <option value="jpn">日本語（jpn）</option>
+          <option value="jpn_vert+jpn">日本語 縦書き（jpn_vert+jpn）</option>
+          <option value="eng">英語（eng）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="psm">ページ分割モード（PSM）</label>
+        <select id="psm">
+          <option value="3" selected>3: 自動レイアウト解析</option>
+          <option value="6">6: 1つのテキストブロック</option>
+          <option value="4">4: 1列の可変サイズ行</option>
+          <option value="11">11: 散らばった文字（写真・看板）</option>
+          <option value="7">7: 1行だけ</option>
+          <option value="5">5: 縦書きの1ブロック</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="whitelist">使う文字を限定（任意）</label>
+        <input id="whitelist" type="text" placeholder="例: 0123456789-">
+        <p class="hint">電話番号や金額だけ読みたい場合など</p>
+      </div>
+
+      <h2>前処理（Tesseract）</h2>
+      <div class="field">
+        <label for="colorPick">文字色で抜き出す</label>
+        <select id="colorPick">
+          <option value="none" selected>しない</option>
+          <option value="white">白い文字（写真に重ねた文字）</option>
+          <option value="white-strict">白い文字・厳しめ</option>
+          <option value="black">黒い文字</option>
+        </select>
+        <p class="hint">SNS 投稿のように写真の上に白文字が乗った画像は「白い文字」＋ PSM 11 が効きます。</p>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="scale">拡大</label>
+          <select id="scale">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="3">3x</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="rotate">回転</label>
+          <select id="rotate">
+            <option value="0" selected>0°</option>
+            <option value="90">90°</option>
+            <option value="180">180°</option>
+            <option value="270">270°</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="binarize">二値化（白黒化）</label>
+        <select id="binarize">
+          <option value="none" selected>なし（Tesseract 任せ）</option>
+          <option value="otsu">全体しきい値（大津法）</option>
+          <option value="adaptive">適応的（照明ムラ・影に強い）</option>
+        </select>
+      </div>
+      <label class="check"><input id="gray" type="checkbox"> グレースケール化</label>
+      <label class="check"><input id="contrast" type="checkbox"> コントラスト自動補正</label>
+      <label class="check"><input id="invert" type="checkbox"> 色を反転（白抜き文字向け）</label>
+
+      <h2>表示</h2>
+      <label class="check"><input id="strip" type="checkbox" checked> 日本語の文字間スペースを詰める</label>
+
+      <h2>実行</h2>
+      <div class="btns">
+        <button class="btn" id="rerunAll" type="button">すべて再実行</button>
+        <button class="btn" id="clearAll" type="button">すべて削除</button>
+      </div>
+      <p class="hint">設定を変えて「すべて再実行」すると、実行ログで条件ごとの差を比べられます。</p>
+    </aside>
+
+    <main>
+      <div class="drop" id="drop">
+        <p>画像をここにドロップ、または貼り付け（⌘V / Ctrl+V）</p>
+        <div class="btns">
+          <button class="btn primary" id="runSamples" type="button">サンプル画像で一括テスト</button>
+          <button class="btn" id="pickFiles" type="button">画像を選ぶ</button>
+          <button class="btn" id="takePhoto" type="button">カメラで撮影</button>
+        </div>
+        <input id="fileInput" type="file" accept="image/*" multiple hidden>
+        <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+        <ol class="steps">
+          <li>まずサンプルで、条件ごとの得意・不得意をつかむ</li>
+          <li>実際に読ませたい写真（レシート、名刺、書類、看板、SNS 投稿など）を追加</li>
+          <li>「正解テキスト」を入れると一致率を計算。前処理やエンジンを変えて再実行して比較</li>
+          <li>読めない場合は「範囲を指定」で文字のある部分だけを囲む</li>
+        </ol>
+      </div>
+
+      <div id="status" role="status" aria-live="polite"></div>
+
+      <section class="log">
+        <header>
+          <h2>実行ログ</h2>
+          <button class="btn small" id="copyLog" type="button">TSV でコピー</button>
+        </header>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>#</th><th>画像</th><th>エンジン</th><th>条件</th><th>一致率</th><th>平均信頼度</th><th>処理時間</th><th>文字数</th></tr>
+            </thead>
+            <tbody id="logBody"><tr><td colspan="8" class="empty">まだ実行していません</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="cards" id="cards"></div>
+    </main>
+  </div>
+</div>
+
+<template id="cardTpl">
+  <article class="card">
+    <header>
+      <h3 data-el="name"></h3>
+      <button class="btn small" data-act="rerun" type="button">現在の設定で再実行</button>
+      <button class="btn small" data-act="select" type="button">範囲を指定</button>
+      <button class="btn small" data-act="unselect" type="button" hidden>範囲を解除</button>
+      <button class="btn small" data-act="remove" type="button">削除</button>
+    </header>
+    <div class="chips"><div class="engines" data-el="engines"></div><span data-el="chips" style="display:contents"></span></div>
+    <p class="note" data-el="note" hidden></p>
+    <div class="card-body">
+      <figure class="view" data-el="view" style="margin:0">
+        <canvas data-el="canvas"></canvas>
+        <p class="selhint" data-el="selhint" hidden>文字のある部分をドラッグで囲んでください（Esc でキャンセル）</p>
+        <div class="viewbar">
+          <label><input type="radio" value="processed" data-el="viewProcessed" checked> 認識した画像</label>
+          <label><input type="radio" value="original" data-el="viewOriginal"> 元画像</label>
+          <label><input type="checkbox" data-el="boxes" checked> 単語の枠</label>
+          <div class="legend"><span style="color:var(--good)">≥80</span><span style="color:var(--mid)">60–79</span><span style="color:var(--bad)">&lt;60</span></div>
+        </div>
+      </figure>
+      <div>
+        <div class="progress" data-el="progress" hidden><progress max="1" value="0"></progress><span></span></div>
+        <p class="err" data-el="error" hidden></p>
+        <div class="metrics">
+          <div class="metric"><small>一致率</small><b data-el="accuracy">—</b></div>
+          <div class="metric"><small>平均信頼度</small><b data-el="confidence">—</b></div>
+          <div class="metric"><small>処理時間</small><b data-el="time">—</b></div>
+          <div class="metric"><small>低信頼の単語</small><b data-el="lowWords">—</b></div>
+        </div>
+        <div class="outbar"><span>認識結果</span><button class="btn small" data-act="copy" type="button">コピー</button></div>
+        <pre class="text" data-el="text"></pre>
+        <details data-el="expectedBox">
+          <summary>正解テキスト（任意・入れると一致率を計算）</summary>
+          <textarea data-el="expected" placeholder="画像に写っている文字をそのまま入力"></textarea>
+        </details>
+      </div>
+    </div>
+  </article>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

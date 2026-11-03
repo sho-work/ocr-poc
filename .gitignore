@@ -1,0 +1,8 @@
+# API keys
+.env
+.env.*
+!.env.example
+
+.claude/
+__pycache__/
+.DS_Store
